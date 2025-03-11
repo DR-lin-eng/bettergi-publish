@@ -65,17 +65,57 @@ jobs:
           $version = ($xmlContent | Select-String -Pattern 'AssemblyVersion\>(.*)\<\/AssemblyVersion').Matches.Groups[1].Value
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "::notice::Version number is: $version"
+      
+      # 移除了 continue-on-error 标志，以便构建失败时能立即停止工作流
       - name: 🛠️ Build application
-        run: dotnet publish BetterGenshinImpact/BetterGenshinImpact.csproj -c Release -p:PublishProfile=FolderProfile
-        continue-on-error: true
-      - name: 🧹 Clear & Move Files
+        run: dotnet publish BetterGenshinImpact/BetterGenshinImpact.csproj -c Release -p:PublishProfile=FolderProfile -v detailed
+      
+      # 添加构建输出路径验证
+      - name: ✅ Verify build output
+        shell: pwsh
         run: |
-            $sourceDir = ".\BetterGenshinImpact\bin\x64\Release\net8.0-windows10.0.22621.0\publish\win-x64"
-            Get-ChildItem -Path $sourceDir -Recurse -Filter "*.lib" | Remove-Item -Force
-            Get-ChildItem -Path $sourceDir -Recurse -Filter "*ffmpeg*.dll" | Remove-Item -Force
-            Get-ChildItem -Path $sourceDir -Recurse -Filter "*.pdb" | Remove-Item -Force
-            New-Item -Path "dist/BetterGI" -ItemType Directory
-            xcopy "$sourceDir\*" ".\dist\BetterGI\" /E /H /I /Y
+          $sourceDir = ".\BetterGenshinImpact\bin\x64\Release\net8.0-windows10.0.22621.0\publish\win-x64"
+          if (!(Test-Path -Path $sourceDir)) {
+            Write-Error "Build output directory does not exist: $sourceDir"
+            exit 1
+          }
+          Write-Host "Build output directory verified: $sourceDir"
+          Get-ChildItem -Path $sourceDir -Recurse | Select-Object -First 10 | Format-Table Name, Length
+      
+      # 改进清理脚本，增加错误处理
+      - name: 🧹 Clear & Move Files
+        shell: pwsh
+        run: |
+          $sourceDir = ".\BetterGenshinImpact\bin\x64\Release\net8.0-windows10.0.22621.0\publish\win-x64"
+          if (!(Test-Path -Path $sourceDir)) {
+            Write-Error "Build output directory does not exist: $sourceDir"
+            exit 1
+          }
+          
+          # 删除不需要的文件
+          Get-ChildItem -Path $sourceDir -Recurse -Filter "*.lib" | Remove-Item -Force
+          Get-ChildItem -Path $sourceDir -Recurse -Filter "*ffmpeg*.dll" | Remove-Item -Force
+          Get-ChildItem -Path $sourceDir -Recurse -Filter "*.pdb" | Remove-Item -Force
+          
+          # 创建目标目录并复制文件
+          New-Item -Path "dist/BetterGI" -ItemType Directory -Force
+          
+          # 记录复制操作前的源目录状态
+          Write-Host "Files to be copied from: $sourceDir"
+          Get-ChildItem -Path $sourceDir | Measure-Object | ForEach-Object { Write-Host "Total files: $($_.Count)" }
+          
+          # 使用 xcopy 复制文件
+          xcopy "$sourceDir\*" ".\dist\BetterGI\" /E /H /I /Y
+          
+          # 验证复制结果
+          if (!(Test-Path -Path ".\dist\BetterGI")) {
+            Write-Error "Failed to create destination directory"
+            exit 1
+          }
+          
+          Write-Host "Files copied to destination:"
+          Get-ChildItem -Path ".\dist\BetterGI" | Measure-Object | ForEach-Object { Write-Host "Total files: $($_.Count)" }
+      
       # 下载前面构建好的web内容
       - uses: actions/download-artifact@v4
         with:
