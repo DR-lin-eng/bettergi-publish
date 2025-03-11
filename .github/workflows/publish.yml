@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: babalae/better-genshin-impact
+          repository: DR-lin-eng/better-genshin-impact
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.x
